@@ -1,0 +1,17 @@
+# API keys and secrets — never commit
+config.yaml
+
+# Runtime cache — large, regenerable
+pipeline/cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+
+# Editor
+*.swp
+*.swo
+.DS_Store

@@ -1,0 +1,35 @@
+tmdb:
+  read_access_token: "YOUR_TMDB_READ_ACCESS_TOKEN_HERE"
+  cache_ttl_days: 180
+
+letterboxd:
+  username: "your_letterboxd_username"
+
+amc:
+  vendor_key: "YOUR_AMC_VENDOR_KEY_HERE"
+
+theaters:
+  - id: amc-waterfront-22
+    name: AMC Waterfront 22
+    chain: amc
+    chain_id: "310"   # replace with real ID from: python -m pipeline.scrapers.amc --find
+
+scoring:
+  base_per_film:    100
+  must_see_bonus:    50
+  horror_bonus:      30
+  format_bonus:
+    IMAX:     5
+    DOLBY:    4
+    PRIME:    3
+    3D:       1
+    STANDARD: 0
+  recliner_bonus:    1
+  diversity_bonus:   5
+
+tiers:
+  marathon:  1200
+  solid:      900
+  decent:     600
+
+attribution: "This application uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."

@@ -1,0 +1,38 @@
+# Rule-based tag overrides for The Booker.
+# Watchlist always wins: a film on your LB watchlist is NEVER auto-skipped.
+
+auto_skip:
+  # TMDB genre IDs to skip automatically (unless on watchlist)
+  # 10402 = Music (concert films), 99 = Documentary
+  genres: [10402]
+
+  # ISO 639-1 language codes to skip (unless the film is on your watchlist).
+  # Targets Bollywood/Indian-language cinema specifically.
+  skip_languages: [hi, ta, te, kn, ml, mr, bn, gu, pa]
+
+  # Films under this runtime are likely shorts or special events
+  min_runtime_minutes: 60
+
+  # TMDB keyword strings to skip (case-insensitive substring match).
+  # Films tagged with any of these keywords are skipped unless on watchlist.
+  skip_keywords:
+    - christian
+    - christianity
+    - evangelical
+    - faith-based
+    - gospel
+    - jesus christ
+    - religious conversion
+    - church
+
+# Individual force-skip by TMDB id (for the odd case a rule doesn't catch it)
+# Find a film's TMDB id at themoviedb.org
+force_skip_tmdb_ids: []
+
+# Force a film into must_see regardless of watchlist (by TMDB id)
+force_must_see_tmdb_ids: []
+
+# Force horror tag by TMDB id (for films TMDB miscategorises)
+force_horror_tmdb_ids: []
+# e.g. The Silence of the Lambs: 274
+# - 274
