@@ -148,7 +148,7 @@ class AMCScraper(Scraper):
 # ---------------------------------------------------------------------------
 # CLI helper: python -m pipeline.scrapers.amc --test
 # ---------------------------------------------------------------------------
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import argparse, sys
 
     parser = argparse.ArgumentParser(description="AMC scraper utility")
