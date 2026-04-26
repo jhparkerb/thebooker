@@ -40,6 +40,30 @@ def _day_summary(showings: list[Showing], tags: TagSets) -> str:
     return " · ".join(parts)
 
 
+def _end_min(s: Showing, is_last: bool) -> tuple[int, bool]:
+    """Return (end_minutes, is_depart). Non-final films depart 10 min early (credits)."""
+    if is_last:
+        return s.listed_start_min + s.runtime_min, False
+    return s.listed_start_min + s.runtime_min - 10, True
+
+
+def _schedule_header(schedule: list[Showing], tags: TagSets,
+                     sched_score: float, must_see_total: int) -> str:
+    ms = sum(1 for s in schedule if tags.is_must_see(s))
+    hr = sum(1 for s in schedule if tags.is_horror(s))
+    return (f"must-see {ms}/{must_see_total} · horror {hr} · "
+            f"films {len(schedule)} · score {sched_score:.0f}")
+
+
+def _dropped_must_sees(schedules: list[list[Showing]], tags: TagSets) -> set:
+    seen: set = set()
+    for sched in schedules:
+        for s in sched:
+            if tags.is_must_see(s):
+                seen.add(tags._key(s))
+    return tags.must_see - seen
+
+
 def _render_schedule(schedule: list[Showing], tags: TagSets, days: list[date],
                      indent: str = "    ") -> None:
     by_day: defaultdict[date, list[Showing]] = defaultdict(list)
@@ -50,11 +74,12 @@ def _render_schedule(schedule: list[Showing], tags: TagSets, days: list[date],
         if not day_showings:
             continue
         print(f"{indent}{day.strftime('%a %b %-d')}  ({_day_summary(day_showings, tags)})")
-        for s in day_showings:
-            end_min  = s.listed_start_min + s.runtime_min
-            timespan = f"{_fmt_time(s.listed_start_min)}–{_fmt_time(end_min)}"
+        for idx, s in enumerate(day_showings):
+            end_min, is_depart = _end_min(s, idx == len(day_showings) - 1)
+            depart_note = " (depart)" if is_depart else ""
+            timespan = f"{_fmt_time(s.listed_start_min)}–{_fmt_time(end_min)}{depart_note}"
             title    = s.title_canonical or s.title_raw
-            print(f"{indent}  {timespan:<17}  {title:<38}  {_showing_tags(s, tags)}")
+            print(f"{indent}  {timespan:<26}  {title:<38}  {_showing_tags(s, tags)}")
 
 
 def render(
@@ -64,6 +89,7 @@ def render(
     cfg: dict,
 ) -> None:
     tiers = cfg.get("tiers", {})
+    must_see_total = len(tags.must_see)
 
     if len(days) >= 2:
         span = f"{days[0].strftime('%b %-d')}–{days[-1].strftime('%-d, %Y')}"
@@ -92,11 +118,17 @@ def render(
             continue
 
         for i, (schedule, sched_score) in enumerate(scored_schedules):
-            if i == 0:
-                _render_schedule(schedule, tags, days)
-            else:
-                print(f"    --- alt {i} (score {sched_score:.0f}) ---")
-                _render_schedule(schedule, tags, days)
+            label = "primary" if i == 0 else f"alt {i}"
+            header = _schedule_header(schedule, tags, sched_score, must_see_total)
+            print(f"    --- {label}: {header} ---")
+            _render_schedule(schedule, tags, days)
+
+        all_schedules = [s for s, _ in scored_schedules]
+        dropped = _dropped_must_sees(all_schedules, tags)
+        if dropped:
+            print(f"    !! DROPPED MUST-SEES: {', '.join(str(k) for k in sorted(dropped, key=str))}")
+        else:
+            print("    All must-sees appear in at least one schedule.")
         print()
 
     print(ATTRIBUTION)

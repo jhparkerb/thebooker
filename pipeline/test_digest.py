@@ -1,9 +1,14 @@
 """Unit tests for digest.py helper functions."""
 
+import io
+import sys
 from datetime import date
 
-from pipeline.digest import _fmt_time, _showing_tags, _day_summary
-from pipeline.optimizer import Showing, TagSets
+from pipeline.digest import (
+    _fmt_time, _showing_tags, _day_summary,
+    _end_min, _schedule_header, _dropped_must_sees, render,
+)
+from pipeline.optimizer import Showing, TagSets, ScoringConfig
 
 
 def _s(title, fmt="STANDARD", recliner=False, tmdb_id=None):
@@ -92,3 +97,109 @@ def test_day_summary_horror_count():
     tags = TagSets(must_see=set(), horror={"A", "B"}, skip=set())
     summary = _day_summary([_s("A"), _s("B"), _s("C")], tags)
     assert "2 horror" in summary
+
+
+# --- _end_min ---
+
+def test_end_min_last_film_full_runtime():
+    s = _s("Foo")
+    end, is_depart = _end_min(s, is_last=True)
+    assert end == s.listed_start_min + s.runtime_min
+    assert not is_depart
+
+def test_end_min_non_last_film_departs_early():
+    s = _s("Foo")
+    end, is_depart = _end_min(s, is_last=False)
+    assert end == s.listed_start_min + s.runtime_min - 10
+    assert is_depart
+
+
+# --- _schedule_header ---
+
+def test_schedule_header_counts():
+    tags = TagSets(must_see={"A", "B", "C", "D"}, horror={"A"}, skip=set())
+    sched = [_s("A"), _s("B"), _s("Z")]
+    h = _schedule_header(sched, tags, 650.0, must_see_total=4)
+    assert "must-see 2/4" in h
+    assert "horror 1" in h
+    assert "films 3" in h
+    assert "score 650" in h
+
+def test_schedule_header_zero_horror():
+    tags = TagSets(must_see=set(), horror=set(), skip=set())
+    h = _schedule_header([_s("X")], tags, 100.0, must_see_total=0)
+    assert "horror 0" in h
+
+
+# --- _dropped_must_sees ---
+
+def test_dropped_must_sees_none_missing():
+    tags = TagSets(must_see={"A"}, horror=set(), skip=set())
+    assert _dropped_must_sees([[_s("A")]], tags) == set()
+
+def test_dropped_must_sees_one_missing():
+    tags = TagSets(must_see={"A", "B"}, horror=set(), skip=set())
+    assert _dropped_must_sees([[_s("A")]], tags) == {"B"}
+
+def test_dropped_must_sees_empty_must_see():
+    tags = TagSets(must_see=set(), horror=set(), skip=set())
+    assert _dropped_must_sees([[_s("A")]], tags) == set()
+
+def test_dropped_must_sees_across_multiple_schedules():
+    tags = TagSets(must_see={"A", "B"}, horror=set(), skip=set())
+    # A in sched 1, B in sched 2 — both covered
+    assert _dropped_must_sees([[_s("A")], [_s("B")]], tags) == set()
+
+
+# --- render() integration ---
+
+def _capture(fn):
+    buf = io.StringIO()
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        fn()
+    finally:
+        sys.stdout = old
+    return buf.getvalue()
+
+def _two_showings_result():
+    """Two showings on the same day; Film A starts first."""
+    d = date(2026, 5, 9)
+    tags = TagSets(must_see={"A"}, horror=set(), skip=set())
+    a = Showing("A", "A", None, 2026, "t1", d, 600, 90, "STANDARD", False)   # 10am, 90min
+    b = Showing("B", "B", None, 2026, "t1", d, 705, 90, "STANDARD", False)   # 11:45am, 90min
+    sched = [a, b]
+    scored = [(sched, 200.0)]
+    theater_cfg = {"name": "Test Theater"}
+    return [(theater_cfg, scored, 200.0)], tags, [d]
+
+def test_render_departure_note_on_non_final():
+    results, tags, days = _two_showings_result()
+    out = _capture(lambda: render(results, tags, days, {}))
+    assert "(depart)" in out
+
+def test_render_no_departure_note_on_final():
+    results, tags, days = _two_showings_result()
+    lines = _capture(lambda: render(results, tags, days, {})).splitlines()
+    # The line for Film B (last) should NOT contain "(depart)"
+    b_lines = [l for l in lines if "B" in l and "depart" in l]
+    assert not b_lines
+
+def test_render_schedule_header_present():
+    results, tags, days = _two_showings_result()
+    out = _capture(lambda: render(results, tags, days, {}))
+    assert "must-see" in out
+    assert "score" in out
+
+def test_render_dropped_must_see_warning():
+    results, tags, days = _two_showings_result()
+    # Override tags so must_see includes something not in any schedule
+    tags2 = TagSets(must_see={"A", "Missing Film"}, horror=set(), skip=set())
+    out = _capture(lambda: render(results, tags2, days, {}))
+    assert "DROPPED MUST-SEES" in out
+
+def test_render_all_must_sees_present_message():
+    results, tags, days = _two_showings_result()
+    out = _capture(lambda: render(results, tags, days, {}))
+    assert "All must-sees appear" in out
