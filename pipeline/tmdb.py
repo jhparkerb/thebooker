@@ -9,10 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-import urllib.request
-import urllib.parse
+import requests
 
-CACHE_PATH = Path(__file__).parent.parent / "pipeline" / "cache" / "tmdb.json"
+CACHE_PATH = Path(__file__).parent / "cache" / "tmdb.json"
 API_BASE   = "https://api.themoviedb.org/3"
 HORROR_GENRE_ID = 27
 
@@ -28,23 +27,21 @@ def _save_cache(cache: dict) -> None:
     CACHE_PATH.write_text(json.dumps(cache, indent=2))
 
 
+_session = requests.Session()
+
 def _get(path: str, token: str, params: dict | None = None) -> Any:
-    url = API_BASE + path
-    if params:
-        url += "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-    })
     for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                time.sleep(2 ** attempt)
-                continue
-            raise
+        resp = _session.get(
+            API_BASE + path,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            params=params,
+            timeout=10,
+        )
+        if resp.status_code == 429:
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        return resp.json()
     raise RuntimeError(f"TMDB rate limit persists after retries: {path}")
 
 
