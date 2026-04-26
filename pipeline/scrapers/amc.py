@@ -20,6 +20,7 @@ import time
 import urllib.request
 import urllib.parse
 from datetime import date, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -42,13 +43,9 @@ FORMAT_CODES = {
 RECLINER_CODES = {"RESERVE", "RECLINE", "DINE-IN", "PRIME", "DOLBY"}
 
 
-_cfg_cache: dict | None = None
-
+@lru_cache(maxsize=None)
 def _cfg() -> dict:
-    global _cfg_cache
-    if _cfg_cache is None:
-        _cfg_cache = yaml.safe_load(CONFIG.read_text())
-    return _cfg_cache
+    return yaml.safe_load(CONFIG.read_text())
 
 
 def _headers() -> dict:
