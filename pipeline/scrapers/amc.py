@@ -19,7 +19,7 @@ import json
 import time
 import urllib.request
 import urllib.parse
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
@@ -161,21 +161,24 @@ class AMCScraper(Scraper):
 # CLI helper: python -m pipeline.scrapers.amc --test
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    import sys
+    import argparse, sys
+
+    parser = argparse.ArgumentParser(description="AMC scraper utility")
+    parser.add_argument("--find", metavar="TEXT", nargs="?", const="waterfront",
+                        help="search for theaters by name")
+    args = parser.parse_args()
 
     cfg = _cfg()
     theater_cfg = next(t for t in cfg["theaters"] if t["chain"] == "amc")
 
-    if "--find" in sys.argv:
-        results = find_theater_id("waterfront")
-        for r in results:
+    if args.find:
+        for r in find_theater_id(args.find):
             print(f"  id={r['id']}  name={r['name']!r}  slug={r['slug']!r}")
         sys.exit(0)
 
-    # Default: fetch today + tomorrow
-    today = date.today()
+    today      = date.today()
     theater_id = theater_cfg["chain_id"]
-    scraper = AMCScraper(theater_id, theater_cfg["name"])
+    scraper    = AMCScraper(theater_id, theater_cfg["name"])
 
     for offset in range(2):
         day = today + timedelta(days=offset)
