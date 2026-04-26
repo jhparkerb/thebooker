@@ -28,7 +28,7 @@ from pipeline.optimizer import Showing
 from pipeline.scrapers.base import Scraper
 
 API_BASE   = "https://api.amctheatres.com/ams/v2"
-CACHE_DIR  = Path(__file__).parent.parent.parent / "pipeline" / "cache" / "amc"
+CACHE_DIR  = Path(__file__).parent.parent / "cache" / "amc"
 CONFIG     = Path(__file__).parent.parent.parent / "config.yaml"
 
 # AMC attribute codes that map to our format/recliner fields
@@ -86,7 +86,6 @@ def find_theater_id(search_text: str) -> list[dict]:
 
 
 def _cache_path(theater_id: str, day: date) -> Path:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return CACHE_DIR / f"{theater_id}_{day.isoformat()}.json"
 
 
@@ -115,6 +114,7 @@ def fetch_raw(theater_id: str, day: date, force: bool = False) -> dict:
     if not force and path.exists():
         return json.loads(path.read_text())
     data = _get(f"/theatres/{theater_id}/showtimes/{day.isoformat()}")
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2))
     return data
 

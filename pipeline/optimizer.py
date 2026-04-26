@@ -171,15 +171,9 @@ def weekend_score(schedules: list[list[Showing]], tags: TagSets,
     return base + must_see_count * cfg.diversity_bonus
 
 
-TIER_LABELS = [
-    (1200, "marathon-grade weekend"),
-    (900,  "solid day-of-movies"),
-    (600,  "decent — a couple of films"),
-    (0,    "thin weekend"),
-]
-
-def tier_label(score: float) -> str:
-    for threshold, label in TIER_LABELS:
-        if score >= threshold:
-            return label
+def tier_label(score: float, tiers: dict | None = None) -> str:
+    t = tiers or {}
+    if score >= t.get("marathon", 1200): return "marathon-grade weekend"
+    if score >= t.get("solid",     900): return "solid day-of-movies"
+    if score >= t.get("decent",    600): return "decent — a couple of films"
     return "thin weekend"

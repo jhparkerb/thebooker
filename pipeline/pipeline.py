@@ -7,6 +7,7 @@ Usage:
 """
 
 from __future__ import annotations
+import dataclasses
 import datetime
 import sys
 from pathlib import Path
@@ -27,15 +28,8 @@ def _load_cfg() -> dict:
 
 def _scoring_cfg(cfg: dict) -> ScoringConfig:
     s = cfg.get("scoring", {})
-    defaults = ScoringConfig()
-    return ScoringConfig(
-        base_per_film   = s.get("base_per_film",   defaults.base_per_film),
-        must_see_bonus  = s.get("must_see_bonus",  defaults.must_see_bonus),
-        horror_bonus    = s.get("horror_bonus",    defaults.horror_bonus),
-        format_bonus    = s.get("format_bonus",    defaults.format_bonus),
-        recliner_bonus  = s.get("recliner_bonus",  defaults.recliner_bonus),
-        diversity_bonus = s.get("diversity_bonus", defaults.diversity_bonus),
-    )
+    valid = {f.name for f in dataclasses.fields(ScoringConfig)}
+    return ScoringConfig(**{k: v for k, v in s.items() if k in valid})
 
 
 def _weekend_days(anchor: datetime.date) -> list[datetime.date]:
@@ -55,7 +49,6 @@ def _make_scraper(theater_cfg: dict):
 def run(cfg: dict, days: list[datetime.date]) -> None:
     scoring = _scoring_cfg(cfg)
 
-    # Fetch showings per theater
     theater_showings: dict[str, list[Showing]] = {}
     for t in cfg["theaters"]:
         showings: list[Showing] = []
@@ -71,13 +64,11 @@ def run(cfg: dict, days: list[datetime.date]) -> None:
                 print(f"[pipeline] {t['name']} {day}: {e}", file=sys.stderr)
         theater_showings[t["id"]] = showings
 
-    # Build tag sets once, across all titles currently playing
     all_titles = list({(s.title_raw, s.year)
                        for showings in theater_showings.values()
                        for s in showings})
     tags = build_tag_sets(cfg, all_titles)
 
-    # Optimize per theater, collect (theater_cfg, best_schedule, score)
     results: list[tuple[dict, list[Showing], float]] = []
     for t in cfg["theaters"]:
         showings = theater_showings.get(t["id"], [])

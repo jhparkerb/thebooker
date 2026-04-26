@@ -8,21 +8,14 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from pipeline.optimizer import Showing, TagSets
+from pipeline.optimizer import Showing, TagSets, tier_label
 
-CACHE_PATH = Path(__file__).parent.parent / "pipeline" / "cache" / "last_digest.json"
+CACHE_PATH = Path(__file__).parent / "cache" / "last_digest.json"
 
 ATTRIBUTION = (
     "This application uses TMDB and the TMDB APIs but is not endorsed, "
     "certified, or otherwise approved by TMDB."
 )
-
-
-def _tier_label(score: float, tiers: dict) -> str:
-    if score >= tiers.get("marathon", 1200): return "marathon-grade weekend"
-    if score >= tiers.get("solid",     900): return "solid day-of-movies"
-    if score >= tiers.get("decent",    600): return "decent — a couple of films"
-    return "thin weekend"
 
 
 def _fmt_time(minutes: int) -> str:
@@ -58,7 +51,6 @@ def render(
 ) -> None:
     tiers = cfg.get("tiers", {})
 
-    # Header
     if len(days) >= 2:
         span = f"{days[0].strftime('%b %-d')}–{days[-1].strftime('%-d, %Y')}"
     else:
@@ -74,11 +66,11 @@ def render(
         return
 
     top_score = results[0][2]
-    print(f"Top score: {top_score:.0f}  ({_tier_label(top_score, tiers)})")
+    print(f"Top score: {top_score:.0f}  ({tier_label(top_score, tiers)})")
     print()
 
     for rank, (theater_cfg, schedule, score) in enumerate(results, 1):
-        print(f"#{rank}  {theater_cfg['name']:<46} score {score:>5.0f}  [{_tier_label(score, tiers)}]")
+        print(f"#{rank}  {theater_cfg['name']:<46} score {score:>5.0f}  [{tier_label(score, tiers)}]")
 
         if not schedule:
             print("    (no viable schedule)")
@@ -115,7 +107,6 @@ def render(
             print(f"  - {k}")
         print()
 
-    # New since last digest
     _diff_and_save(results, days)
 
     print(ATTRIBUTION)
@@ -125,11 +116,6 @@ def _diff_and_save(
     results: list[tuple[dict, list[Showing], float]],
     days: list[date],
 ) -> None:
-    current: dict[str, list[str]] = {
-        t["id"]: sorted({s.title_canonical or s.title_raw for s in sched})
-        for t, sched, _ in results
-    }
-
     prev: dict[str, list[str]] = {}
     if CACHE_PATH.exists():
         try:
@@ -137,12 +123,15 @@ def _diff_and_save(
         except (json.JSONDecodeError, KeyError):
             pass
 
+    current: dict[str, list[str]] = {}
     new_items: list[str] = []
-    for theater_cfg, _, _ in results:
-        tid  = theater_cfg["id"]
-        name = theater_cfg["name"]
+    for theater_cfg, sched, _ in results:
+        tid    = theater_cfg["id"]
+        name   = theater_cfg["name"]
+        titles = sorted({s.title_canonical or s.title_raw for s in sched})
+        current[tid] = titles
         prev_titles = set(prev.get(tid, []))
-        for title in current.get(tid, []):
+        for title in titles:
             if title not in prev_titles:
                 new_items.append(f"  - {title!r} at {name}")
 
