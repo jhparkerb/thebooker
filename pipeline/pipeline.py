@@ -71,14 +71,15 @@ def run(cfg: dict, days: list[datetime.date]) -> None:
                        for s in showings})
     tags = build_tag_sets(cfg, all_titles)
 
-    results: list[tuple[dict, list[Showing], float]] = []
+    results: list[tuple[dict, list[tuple[list[Showing], float]], float]] = []
     for t in cfg["theaters"]:
         showings = theater_showings.get(t["id"], [])
         if not showings:
             continue
-        schedules = solve(showings, tags, scoring)
-        score     = weekend_score(schedules, tags, scoring)
-        results.append((t, schedules[0] if schedules else [], score))
+        schedules  = solve(showings, tags, scoring)
+        top_score  = weekend_score(schedules, tags, scoring)
+        scored     = [(s, weekend_score([s], tags, scoring)) for s in schedules]
+        results.append((t, scored, top_score))
 
     results.sort(key=lambda x: x[2], reverse=True)
     digest.render(results, tags, days, cfg)

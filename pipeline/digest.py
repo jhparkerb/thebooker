@@ -44,8 +44,25 @@ def _day_summary(showings: list[Showing], tags: TagSets) -> str:
     return " · ".join(parts)
 
 
+def _render_schedule(schedule: list[Showing], tags: TagSets, days: list[date],
+                     indent: str = "    ") -> None:
+    by_day: defaultdict[date, list[Showing]] = defaultdict(list)
+    for s in schedule:
+        by_day[s.day].append(s)
+    for day in days:
+        day_showings = sorted(by_day.get(day, []), key=lambda s: s.listed_start_min)
+        if not day_showings:
+            continue
+        print(f"{indent}{day.strftime('%a %b %-d')}  ({_day_summary(day_showings, tags)})")
+        for s in day_showings:
+            end_min  = s.listed_start_min + s.runtime_min
+            timespan = f"{_fmt_time(s.listed_start_min)}–{_fmt_time(end_min)}"
+            title    = s.title_canonical or s.title_raw
+            print(f"{indent}  {timespan:<17}  {title:<38}  {_showing_tags(s, tags)}")
+
+
 def render(
-    results: list[tuple[dict, list[Showing], float]],
+    results: list[tuple[dict, list[tuple[list[Showing], float]], float]],
     tags: TagSets,
     days: list[date],
     cfg: dict,
@@ -70,35 +87,26 @@ def render(
     print(f"Top score: {top_score:.0f}  ({tier_label(top_score, tiers)})")
     print()
 
-    for rank, (theater_cfg, schedule, score) in enumerate(results, 1):
+    for rank, (theater_cfg, scored_schedules, score) in enumerate(results, 1):
         print(f"#{rank}  {theater_cfg['name']:<46} score {score:>5.0f}  [{tier_label(score, tiers)}]")
 
-        if not schedule:
+        if not scored_schedules:
             print("    (no viable schedule)")
             print()
             continue
 
-        by_day: defaultdict[date, list[Showing]] = defaultdict(list)
-        for s in schedule:
-            by_day[s.day].append(s)
-
-        for day in days:
-            day_showings = sorted(by_day.get(day, []), key=lambda s: s.listed_start_min)
-            if not day_showings:
-                continue
-            print(f"    {day.strftime('%a %b %-d')}  ({_day_summary(day_showings, tags)})")
-            for s in day_showings:
-                end_min  = s.listed_start_min + s.runtime_min
-                timespan = f"{_fmt_time(s.listed_start_min)}–{_fmt_time(end_min)}"
-                title    = s.title_canonical or s.title_raw
-                tag_str  = _showing_tags(s, tags)
-                print(f"      {timespan:<17}  {title:<38}  {tag_str}")
+        for i, (schedule, sched_score) in enumerate(scored_schedules):
+            if i == 0:
+                _render_schedule(schedule, tags, days)
+            else:
+                print(f"    --- alt {i} (score {sched_score:.0f}) ---")
+                _render_schedule(schedule, tags, days)
         print()
 
     # Dropped must-sees: in tags.must_see but not in any theater's best schedule
     scheduled_keys: set = set()
-    for _, schedule, _ in results:
-        for s in schedule:
+    for _, scored_schedules, _ in results:
+        for s in (scored_schedules[0][0] if scored_schedules else []):
             scheduled_keys.add(s.tmdb_id if s.tmdb_id is not None else s.title_canonical)
 
     dropped = [k for k in tags.must_see if k not in scheduled_keys]
@@ -114,7 +122,7 @@ def render(
 
 
 def _diff_and_save(
-    results: list[tuple[dict, list[Showing], float]],
+    results: list[tuple[dict, list[tuple[list[Showing], float]], float]],
     days: list[date],
 ) -> None:
     prev: dict[str, list[str]] = {}
@@ -126,9 +134,10 @@ def _diff_and_save(
 
     current: dict[str, list[str]] = {}
     new_items: list[str] = []
-    for theater_cfg, sched, _ in results:
+    for theater_cfg, scored_schedules, _ in results:
         tid    = theater_cfg["id"]
         name   = theater_cfg["name"]
+        sched  = scored_schedules[0][0] if scored_schedules else []
         titles = sorted({s.title_canonical or s.title_raw for s in sched})
         current[tid] = titles
         prev_titles = set(prev.get(tid, []))
