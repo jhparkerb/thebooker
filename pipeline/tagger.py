@@ -2,7 +2,7 @@
 Builds TagSets from Letterboxd lists + TMDB genre/language data + rule overrides.
 
 Resolution order (highest priority first):
-  1. force_skip / force_must_see / force_horror TMDB ids in overrides.yaml
+  1. force_skip TMDB ids in overrides.yaml
   2. LB watchlist  → always un-skipped; must_see bonus
   3. LB watched    → skip
   4. auto_skip rules (genre, language, runtime)
@@ -79,9 +79,7 @@ def build_tag_sets(
     overrides  = _load_overrides()
     auto_rules = overrides.get("auto_skip", {})
 
-    force_skip     = set(overrides.get("force_skip_tmdb_ids", []))
-    force_must_see = set(overrides.get("force_must_see_tmdb_ids", []))
-    force_horror   = set(overrides.get("force_horror_tmdb_ids", []))
+    force_skip = set(overrides.get("force_skip_tmdb_ids", []))
 
     # --- Resolve LB lists to TMDB ids ---
     lb_watchlist = fetch_watchlist(lb_user)
@@ -104,13 +102,8 @@ def build_tag_sets(
             continue
         tid = r["tmdb_id"]
 
-        # Force overrides
         if tid in force_skip:
             skip.add(tid); continue
-        if tid in force_must_see:
-            must_see.add(tid)
-        if tid in force_horror:
-            horror.add(tid)
 
         # Watched → skip (unless on watchlist — watchlist means "see again")
         if tid in watched_ids and tid not in watchlist_ids:
@@ -127,9 +120,5 @@ def build_tag_sets(
         # TMDB horror genre
         if r.get("is_horror") or TMDB_HORROR_GENRE in r.get("genres", []):
             horror.add(tid)
-
-    # Add force entries even if not currently playing
-    must_see |= force_must_see
-    horror   |= force_horror
 
     return TagSets(must_see=must_see, horror=horror, skip=skip)

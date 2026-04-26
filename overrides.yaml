@@ -28,11 +28,3 @@ auto_skip:
 # Individual force-skip by TMDB id (for the odd case a rule doesn't catch it)
 # Find a film's TMDB id at themoviedb.org
 force_skip_tmdb_ids: []
-
-# Force a film into must_see regardless of watchlist (by TMDB id)
-force_must_see_tmdb_ids: []
-
-# Force horror tag by TMDB id (for films TMDB miscategorises)
-force_horror_tmdb_ids: []
-# e.g. The Silence of the Lambs: 274
-# - 274
