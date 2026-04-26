@@ -78,18 +78,13 @@ def solve(
     cfg: ScoringConfig | None = None,
     top_k: int = 3,
     min_diff: int = 2,
-    required: set | None = None,
 ) -> list[list[Showing]]:
     """
     Return up to top_k diverse schedules (each pair differs by ≥ min_diff showings).
-    Showings in `required` (by tmdb_id or canonical title) must appear in every
-    returned schedule.
-
     Assumes all showings are for the same theater. Groups by day internally.
     """
     if cfg is None:
         cfg = ScoringConfig()
-    required = required or set()
 
     candidates = [s for s in showings if not tags.is_skip(s)]
     candidates.sort(key=lambda s: (s.day, s.listed_start_min))
@@ -120,8 +115,6 @@ def solve(
             return
 
         if idx == n:
-            if required and not required.issubset(used_keys):
-                return
             entry = (cur_score, list(cur_sched))
             pool.append(entry)
             pool.sort(key=lambda x: -x[0])
