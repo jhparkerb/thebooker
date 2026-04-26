@@ -99,17 +99,4 @@ def render(
                 _render_schedule(schedule, tags, days)
         print()
 
-    # Dropped must-sees: in tags.must_see but not in any theater's best schedule
-    scheduled_keys: set = set()
-    for _, scored_schedules, _ in results:
-        for s in (scored_schedules[0][0] if scored_schedules else []):
-            scheduled_keys.add(s.tmdb_id if s.tmdb_id is not None else s.title_canonical)
-
-    dropped = [k for k in tags.must_see if k not in scheduled_keys]
-    if dropped:
-        print("DROPPED MUST-SEES (not in any theater's best schedule):")
-        for k in dropped:
-            print(f"  - {k}")
-        print()
-
     print(ATTRIBUTION)
