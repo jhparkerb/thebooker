@@ -1,11 +1,10 @@
 """Unit tests for tmdb.py — no network calls."""
 
 import json
-import sys
 import time
-import types
 
 import pytest
+import requests
 
 import pipeline.tmdb as tmdb
 
@@ -23,16 +22,6 @@ class _Resp:
             raise RuntimeError(f"HTTP {self.status_code}")
     def json(self):
         return self._data
-
-
-def _fake_requests_mod(responses: list) -> types.ModuleType:
-    it = iter(responses)
-    class FakeSession:
-        def get(self, *args, **kwargs):
-            return next(it)
-    mod = types.ModuleType("requests")
-    mod.Session = FakeSession
-    return mod
 
 
 def _search_result(title="Foo", year=2026, genre_ids=None, tmdb_id=42):
@@ -186,14 +175,22 @@ def test_lookup_search_failure_returns_none(tmp_path, monkeypatch, capsys):
 # _get — retry / rate-limit behavior
 # ---------------------------------------------------------------------------
 
+def _fake_session(responses):
+    it = iter(responses)
+    class FakeSession:
+        def get(self, *args, **kwargs):
+            return next(it)
+    return FakeSession
+
+
 def test_get_429_then_200(monkeypatch):
-    monkeypatch.setitem(sys.modules, "requests", _fake_requests_mod([_Resp(429), _Resp(200, {"ok": True})]))
+    monkeypatch.setattr(requests, "Session", _fake_session([_Resp(429), _Resp(200, {"ok": True})]))
     monkeypatch.setattr(time, "sleep", lambda *_: None)
     assert tmdb._get("/test", "tok") == {"ok": True}
 
 
 def test_get_three_429s_raises(monkeypatch):
-    monkeypatch.setitem(sys.modules, "requests", _fake_requests_mod([_Resp(429), _Resp(429), _Resp(429)]))
+    monkeypatch.setattr(requests, "Session", _fake_session([_Resp(429), _Resp(429), _Resp(429)]))
     monkeypatch.setattr(time, "sleep", lambda *_: None)
     with pytest.raises(RuntimeError, match="rate limit"):
         tmdb._get("/test", "tok")

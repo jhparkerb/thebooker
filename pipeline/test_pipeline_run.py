@@ -2,10 +2,10 @@
 
 import datetime
 import sys
-import types
 
 import pytest
 
+import pipeline.digest
 import pipeline.pipeline as pp
 from pipeline.optimizer import Showing, TagSets
 
@@ -33,7 +33,7 @@ def _showing(title="Foo", start=600, runtime=90):
 def _setup_run(monkeypatch, showings=None, tags=None):
     """Patch all external I/O so run() can execute end-to-end."""
     showings = showings if showings is not None else [_showing()]
-    tags     = tags     or _EMPTY_TAGS
+    tags     = tags or _EMPTY_TAGS
 
     class FakeScraper:
         def fetch(self, theater_id, day):
@@ -41,7 +41,7 @@ def _setup_run(monkeypatch, showings=None, tags=None):
 
     monkeypatch.setattr(pp, "_make_scraper",  lambda cfg: FakeScraper())
     monkeypatch.setattr(pp, "build_tag_sets", lambda cfg, titles: tags)
-    monkeypatch.setattr(pp, "digest",         types.SimpleNamespace(render=lambda *a, **kw: None))
+    monkeypatch.setattr(pipeline.digest, "render", lambda *a, **kw: None)
 
 
 # ---------------------------------------------------------------------------
@@ -62,16 +62,15 @@ def test_load_cfg_reads_yaml(tmp_path, monkeypatch):
 def test_run_calls_render(monkeypatch):
     rendered = []
     _setup_run(monkeypatch)
-    monkeypatch.setattr(pp, "digest",
-                        types.SimpleNamespace(render=lambda *a, **kw: rendered.append(a)))
+    monkeypatch.setattr(pipeline.digest, "render", lambda *a, **kw: rendered.append(a))
     pp.run(_CFG, _DAYS)
     assert rendered
 
 def test_run_skips_unknown_chain(monkeypatch, capsys):
     cfg = {**_CFG, "theaters": [{"id": "t1", "chain": "regal", "chain_id": "x", "name": "Regal"}]}
     monkeypatch.setattr(pp, "build_tag_sets", lambda cfg, titles: _EMPTY_TAGS)
-    monkeypatch.setattr(pp, "digest", types.SimpleNamespace(render=lambda *a, **kw: None))
-    pp.run(cfg, _DAYS)   # should not raise; prints a warning
+    monkeypatch.setattr(pipeline.digest, "render", lambda *a, **kw: None)
+    pp.run(cfg, _DAYS)
     assert "skipping" in capsys.readouterr().err
 
 def test_run_handles_scraper_fetch_error(monkeypatch, capsys):
@@ -80,8 +79,8 @@ def test_run_handles_scraper_fetch_error(monkeypatch, capsys):
             raise RuntimeError("network down")
     monkeypatch.setattr(pp, "_make_scraper",  lambda cfg: ErrorScraper())
     monkeypatch.setattr(pp, "build_tag_sets", lambda cfg, titles: _EMPTY_TAGS)
-    monkeypatch.setattr(pp, "digest", types.SimpleNamespace(render=lambda *a, **kw: None))
-    pp.run(_CFG, _DAYS)  # should not raise
+    monkeypatch.setattr(pipeline.digest, "render", lambda *a, **kw: None)
+    pp.run(_CFG, _DAYS)
     assert "network down" in capsys.readouterr().err
 
 def test_run_excludes_theater_with_no_showings(monkeypatch):
@@ -91,34 +90,30 @@ def test_run_excludes_theater_with_no_showings(monkeypatch):
             return []
     monkeypatch.setattr(pp, "_make_scraper",  lambda cfg: EmptyScraper())
     monkeypatch.setattr(pp, "build_tag_sets", lambda cfg, titles: _EMPTY_TAGS)
-    monkeypatch.setattr(pp, "digest",
-                        types.SimpleNamespace(render=lambda results, *a, **kw: rendered_results.extend(results)))
+    monkeypatch.setattr(pipeline.digest, "render",
+                        lambda results, *a, **kw: rendered_results.extend(results))
     pp.run(_CFG, _DAYS)
     assert rendered_results == []
 
 def test_run_results_sorted_by_score_descending(monkeypatch):
-    _setup_run(monkeypatch, showings=[_showing()])
     cfg = {**_CFG, "theaters": [
         {"id": "t1", "chain": "amc", "chain_id": "1", "name": "A"},
         {"id": "t2", "chain": "amc", "chain_id": "2", "name": "B"},
     ]}
 
-    class FakeScraper:
-        def __init__(self, score):
-            self._score = score
-        def fetch(self, theater_id, day):
-            return [_showing()]
-
     call_count = [0]
     def make_scraper(tcfg):
         call_count[0] += 1
-        return FakeScraper(100 - call_count[0] * 10)
+        class S:
+            def fetch(self, theater_id, day):
+                return [_showing()]
+        return S()
 
     captured = []
     monkeypatch.setattr(pp, "_make_scraper",  make_scraper)
     monkeypatch.setattr(pp, "build_tag_sets", lambda cfg, titles: _EMPTY_TAGS)
-    monkeypatch.setattr(pp, "digest",
-                        types.SimpleNamespace(render=lambda results, *a, **kw: captured.extend(results)))
+    monkeypatch.setattr(pipeline.digest, "render",
+                        lambda results, *a, **kw: captured.extend(results))
     pp.run(cfg, _DAYS)
     scores = [score for _, _, score in captured]
     assert scores == sorted(scores, reverse=True)

@@ -1,12 +1,11 @@
 """Unit tests for scrapers/amc.py — no network calls."""
 
 import json
-import sys
 import time
-import types
 from datetime import date
 
 import pytest
+import requests
 
 import pipeline.scrapers.amc as amc
 
@@ -24,18 +23,6 @@ class _Resp:
             raise RuntimeError(f"HTTP {self.status_code}")
     def json(self):
         return self._data
-
-
-def _fake_requests_mod(responses: list) -> types.ModuleType:
-    it = iter(responses)
-    class FakeSession:
-        def __init__(self):
-            self.headers = {}
-        def get(self, *args, **kwargs):
-            return next(it)
-    mod = types.ModuleType("requests")
-    mod.Session = FakeSession
-    return mod
 
 
 def _showtime_entry(title="Foo", runtime=120, dt="2026-05-09T10:00:00", attrs=None):
@@ -230,16 +217,24 @@ def test_scraper_fetch_legacy_no_showdatetimes(tmp_path, monkeypatch):
 # _get — retry / rate-limit behavior
 # ---------------------------------------------------------------------------
 
+def _fake_session(responses):
+    it = iter(responses)
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+        def get(self, *args, **kwargs):
+            return next(it)
+    return FakeSession
+
+
 def test_get_429_then_200(monkeypatch):
-    monkeypatch.setitem(sys.modules, "requests",
-                        _fake_requests_mod([_Resp(429), _Resp(200, {"data": "ok"})]))
+    monkeypatch.setattr(requests, "Session", _fake_session([_Resp(429), _Resp(200, {"data": "ok"})]))
     monkeypatch.setattr(time, "sleep", lambda *_: None)
     monkeypatch.setattr(amc, "_cfg", lambda: {"amc": {"vendor_key": "test"}})
     assert amc._get("/path") == {"data": "ok"}
 
 def test_get_three_429s_raises(monkeypatch):
-    monkeypatch.setitem(sys.modules, "requests",
-                        _fake_requests_mod([_Resp(429), _Resp(429), _Resp(429)]))
+    monkeypatch.setattr(requests, "Session", _fake_session([_Resp(429), _Resp(429), _Resp(429)]))
     monkeypatch.setattr(time, "sleep", lambda *_: None)
     monkeypatch.setattr(amc, "_cfg", lambda: {"amc": {"vendor_key": "test"}})
     with pytest.raises(RuntimeError, match="rate limit"):

@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import requests
+
 CACHE_PATH = Path(__file__).parent / "cache" / "tmdb.json"
 API_BASE   = "https://api.themoviedb.org/3"
 HORROR_GENRE_ID = 27
@@ -26,7 +28,6 @@ def _save_cache(cache: dict) -> None:
 
 
 def _get(path: str, token: str, params: dict | None = None) -> Any:
-    import requests
     session = requests.Session()
     for attempt in range(3):
         resp = session.get(
