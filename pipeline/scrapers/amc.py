@@ -17,12 +17,11 @@ Raw responses are cached per (theater_id, date) to avoid redundant calls.
 from __future__ import annotations
 import json
 import time
-import urllib.request
-import urllib.parse
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
 
+import requests
 import yaml
 
 from pipeline.optimizer import Showing
@@ -48,28 +47,23 @@ def _cfg() -> dict:
     return yaml.safe_load(CONFIG.read_text())
 
 
-def _headers() -> dict:
-    return {
-        "X-AMC-Vendor-Key": _cfg()["amc"]["vendor_key"],
-        "Accept": "application/json",
-        "User-Agent": "TheBooker/1.0 (personal scheduling tool; non-commercial)",
-    }
+_session = requests.Session()
+_session.headers.update({
+    "Accept": "application/json",
+    "User-Agent": "TheBooker/1.0 (personal scheduling tool; non-commercial)",
+})
 
 
 def _get(path: str, params: dict | None = None) -> dict:
-    url = API_BASE + path
-    if params:
-        url += "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers=_headers())
+    headers = {"X-AMC-Vendor-Key": _cfg()["amc"]["vendor_key"]}
     for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                time.sleep(2 ** attempt)
-                continue
-            raise
+        resp = _session.get(API_BASE + path, headers=headers,
+                            params=params, timeout=15)
+        if resp.status_code == 429:
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        return resp.json()
     raise RuntimeError(f"AMC API rate limit persists: {path}")
 
 
