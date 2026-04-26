@@ -1,5 +1,6 @@
-"""Unit tests for tagger._should_auto_skip — pure function, no I/O."""
+"""Unit tests for tagger helpers and build_tag_sets — no I/O."""
 
+import pipeline.tagger as tagger
 from pipeline.tagger import _should_auto_skip
 
 
@@ -83,3 +84,110 @@ def test_no_skip_with_empty_rules():
         {},
         set()
     )
+
+
+# ---------------------------------------------------------------------------
+# _load_overrides
+# ---------------------------------------------------------------------------
+
+def test_load_overrides_missing_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(tagger, "OVERRIDES_PATH", tmp_path / "missing.yaml")
+    assert tagger._load_overrides() == {}
+
+def test_load_overrides_parses_yaml(tmp_path, monkeypatch):
+    path = tmp_path / "overrides.yaml"
+    path.write_text("force_skip_tmdb_ids: [1, 2]\n")
+    monkeypatch.setattr(tagger, "OVERRIDES_PATH", path)
+    assert tagger._load_overrides() == {"force_skip_tmdb_ids": [1, 2]}
+
+
+# ---------------------------------------------------------------------------
+# _resolve_lb_to_tmdb
+# ---------------------------------------------------------------------------
+
+def _tmdb_result(tmdb_id=1, **kw):
+    return {"tmdb_id": tmdb_id, "canonical_title": "Film", "year": 2026,
+            "genres": [], "original_language": "en", "keywords": [],
+            "is_horror": False, **kw}
+
+def test_resolve_lb_to_tmdb_basic(monkeypatch):
+    r = _tmdb_result(tmdb_id=42)
+    monkeypatch.setattr(tagger, "tmdb_lookup", lambda title, year, token, ttl: r)
+    result = tagger._resolve_lb_to_tmdb([{"title": "Foo", "year": 2026}], "tok", 30)
+    assert result == {42: r}
+
+def test_resolve_lb_to_tmdb_none_skipped(monkeypatch):
+    monkeypatch.setattr(tagger, "tmdb_lookup", lambda *a, **kw: None)
+    result = tagger._resolve_lb_to_tmdb([{"title": "Foo", "year": 2026}], "tok", 30)
+    assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# build_tag_sets
+# ---------------------------------------------------------------------------
+
+_CFG = {
+    "tmdb": {"read_access_token": "tok", "cache_ttl_days": 30},
+    "letterboxd": {"username": "user1"},
+}
+
+def _setup(monkeypatch, *, watchlist=None, watched=None, overrides=None, lookup_map=None):
+    monkeypatch.setattr(tagger, "fetch_watchlist", lambda user: watchlist or [])
+    monkeypatch.setattr(tagger, "fetch_watched",   lambda user: watched   or [])
+    monkeypatch.setattr(tagger, "_load_overrides", lambda: overrides or {})
+    lm = lookup_map or {}
+    monkeypatch.setattr(tagger, "tmdb_lookup",
+                        lambda title, year, token, ttl: lm.get(title))
+
+def test_build_tag_sets_must_see_from_watchlist(monkeypatch):
+    r = _tmdb_result(tmdb_id=10)
+    _setup(monkeypatch, watchlist=[{"title": "Foo", "year": 2026}], lookup_map={"Foo": r})
+    tags = tagger.build_tag_sets(_CFG, [("Foo", 2026)])
+    assert 10 in tags.must_see
+    assert 10 not in tags.skip
+
+def test_build_tag_sets_skip_watched(monkeypatch):
+    r = _tmdb_result(tmdb_id=20)
+    _setup(monkeypatch, watched=[{"title": "Foo", "year": 2026}], lookup_map={"Foo": r})
+    tags = tagger.build_tag_sets(_CFG, [("Foo", 2026)])
+    assert 20 in tags.skip
+    assert 20 not in tags.must_see
+
+def test_build_tag_sets_watchlist_overrides_watched(monkeypatch):
+    r = _tmdb_result(tmdb_id=30)
+    _setup(monkeypatch,
+           watchlist=[{"title": "Foo", "year": 2026}],
+           watched=[{"title": "Foo", "year": 2026}],
+           lookup_map={"Foo": r})
+    tags = tagger.build_tag_sets(_CFG, [("Foo", 2026)])
+    assert 30 in tags.must_see
+    assert 30 not in tags.skip
+
+def test_build_tag_sets_force_skip(monkeypatch):
+    r = _tmdb_result(tmdb_id=40)
+    _setup(monkeypatch, overrides={"force_skip_tmdb_ids": [40]}, lookup_map={"Foo": r})
+    tags = tagger.build_tag_sets(_CFG, [("Foo", 2026)])
+    assert 40 in tags.skip
+    assert 40 not in tags.must_see
+
+def test_build_tag_sets_horror(monkeypatch):
+    r = _tmdb_result(tmdb_id=50, genres=[27], is_horror=True)
+    _setup(monkeypatch, lookup_map={"Foo": r})
+    tags = tagger.build_tag_sets(_CFG, [("Foo", 2026)])
+    assert 50 in tags.horror
+
+def test_build_tag_sets_tmdb_none_silently_skipped(monkeypatch):
+    _setup(monkeypatch, lookup_map={"Foo": None})
+    tags = tagger.build_tag_sets(_CFG, [("Foo", 2026)])
+    assert not tags.must_see and not tags.skip and not tags.horror
+
+def test_build_tag_sets_auto_skip_genre(monkeypatch):
+    r = _tmdb_result(tmdb_id=60, genres=[10402])
+    _setup(monkeypatch, overrides={"auto_skip": {"genres": [10402]}}, lookup_map={"Foo": r})
+    tags = tagger.build_tag_sets(_CFG, [("Foo", 2026)])
+    assert 60 in tags.skip
+
+def test_build_tag_sets_empty_showings(monkeypatch):
+    _setup(monkeypatch)
+    tags = tagger.build_tag_sets(_CFG, [])
+    assert not tags.must_see and not tags.skip and not tags.horror
