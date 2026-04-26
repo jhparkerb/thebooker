@@ -4,14 +4,10 @@ Maintains cache/last_digest.json for new-since-last-run diffing.
 """
 
 from __future__ import annotations
-import json
 from collections import defaultdict
 from datetime import date, datetime
-from pathlib import Path
 
 from pipeline.optimizer import Showing, TagSets, tier_label
-
-CACHE_PATH = Path(__file__).parent / "cache" / "last_digest.json"
 
 ATTRIBUTION = (
     "This application uses TMDB and the TMDB APIs but is not endorsed, "
@@ -116,44 +112,4 @@ def render(
             print(f"  - {k}")
         print()
 
-    _diff_and_save(results, days)
-
     print(ATTRIBUTION)
-
-
-def _diff_and_save(
-    results: list[tuple[dict, list[tuple[list[Showing], float]], float]],
-    days: list[date],
-) -> None:
-    prev: dict[str, list[str]] = {}
-    if CACHE_PATH.exists():
-        try:
-            prev = json.loads(CACHE_PATH.read_text()).get("schedules", {})
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-    current: dict[str, list[str]] = {}
-    new_items: list[str] = []
-    for theater_cfg, scored_schedules, _ in results:
-        tid    = theater_cfg["id"]
-        name   = theater_cfg["name"]
-        sched  = scored_schedules[0][0] if scored_schedules else []
-        titles = sorted({s.title_canonical or s.title_raw for s in sched})
-        current[tid] = titles
-        prev_titles = set(prev.get(tid, []))
-        for title in titles:
-            if title not in prev_titles:
-                new_items.append(f"  - {title!r} at {name}")
-
-    if new_items:
-        print("NEW SINCE LAST DIGEST:")
-        for item in new_items:
-            print(item)
-        print()
-
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(json.dumps({
-        "generated": datetime.now().isoformat(),
-        "days":      [d.isoformat() for d in days],
-        "schedules": current,
-    }, indent=2))
