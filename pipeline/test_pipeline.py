@@ -1,8 +1,9 @@
 """Unit tests for pipeline.py pure helpers — no I/O, no network."""
 
 import datetime
+import pytest
 
-from pipeline.pipeline import _weekend_days, _scoring_cfg
+from pipeline.pipeline import _weekend_days, _scoring_cfg, _make_scraper
 from pipeline.optimizer import ScoringConfig
 
 
@@ -57,3 +58,10 @@ def test_scoring_cfg_unknown_keys_ignored():
 def test_scoring_cfg_no_scoring_section():
     cfg = _scoring_cfg({"tmdb": {"read_access_token": "x"}})
     assert cfg.base_per_film == 100.0
+
+
+# --- _make_scraper ---
+
+def test_make_scraper_unknown_chain_raises():
+    with pytest.raises(ValueError, match="unsupported chain"):
+        _make_scraper({"chain": "regal", "chain_id": "x", "name": "Regal Whatever"})

@@ -17,6 +17,7 @@ import sys
 from pipeline.optimizer import ScoringConfig, Showing, solve, weekend_score
 from pipeline.tagger import build_tag_sets
 from pipeline.scrapers.amc import AMCScraper
+from pipeline.scrapers.base import Scraper
 import pipeline.digest as digest
 
 CONFIG = Path(__file__).parent.parent / "config.yaml"
@@ -40,7 +41,7 @@ def _weekend_days(anchor: datetime.date) -> list[datetime.date]:
     return [sat, sat + datetime.timedelta(days=1)]
 
 
-def _make_scraper(theater_cfg: dict):
+def _make_scraper(theater_cfg: dict) -> Scraper:
     chain = theater_cfg["chain"]
     if chain == "amc":
         return AMCScraper(theater_cfg["chain_id"], theater_cfg["name"])

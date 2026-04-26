@@ -43,7 +43,7 @@ class _PosterParser(HTMLParser):
              data-item-name="Coyote vs. ACME (2026)"
              data-item-slug="coyote-vs-acme" ...>
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.films: list[dict] = []
 

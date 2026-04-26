@@ -108,7 +108,7 @@ def fetch_raw(theater_id: str, day: date, force: bool = False) -> dict:
 
 
 class AMCScraper(Scraper):
-    def __init__(self, theater_id: str, theater_name: str):
+    def __init__(self, theater_id: str, theater_name: str) -> None:
         self.theater_id   = theater_id
         self.theater_name = theater_name
 

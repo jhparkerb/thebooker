@@ -203,3 +203,28 @@ def test_render_all_must_sees_present_message():
     results, tags, days = _two_showings_result()
     out = _capture(lambda: render(results, tags, days, {}))
     assert "All must-sees appear" in out
+
+def test_render_single_day_span():
+    results, tags, days = _two_showings_result()
+    out = _capture(lambda: render(results, tags, [days[0]], {}))
+    assert "May 9, 2026" in out
+
+def test_render_empty_results():
+    out = _capture(lambda: render([], EMPTY_TAGS, [date(2026, 5, 9)], {}))
+    assert "No showings found" in out
+
+def test_render_no_viable_schedule():
+    d = date(2026, 5, 9)
+    theater_cfg = {"name": "Ghost Theater"}
+    results = [(theater_cfg, [], 0.0)]
+    out = _capture(lambda: render(results, EMPTY_TAGS, [d], {}))
+    assert "no viable schedule" in out
+
+def test_render_skips_empty_day():
+    d1 = date(2026, 5, 9)
+    d2 = date(2026, 5, 10)
+    s = Showing("A", "A", None, 2026, "t1", d1, 600, 90, "STANDARD", False)
+    # d2 has no showings — _render_schedule should skip it silently
+    results = [({"name": "T"}, [([s], 100.0)], 100.0)]
+    out = _capture(lambda: render(results, EMPTY_TAGS, [d1, d2], {}))
+    assert "May 10" not in out
