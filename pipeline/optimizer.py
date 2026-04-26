@@ -3,6 +3,12 @@ Schedule optimizer — branch-and-bound DFS over a set of Showings.
 
 All tag sets (must_see, horror, skip) are matched against Showing.tmdb_id when
 set, falling back to Showing.title_canonical for hand-tagged overrides.
+
+Scoring model (canonical values; overridable via config.yaml):
+  base_per_film=100, must_see_bonus=50, horror_bonus=30 (tracked separately),
+  format bonuses: IMAX=5, DOLBY=4, PRIME=3, 3D=1, STANDARD=0, recliner=1.
+  schedule.py used collapsed must_see+horror (+50 combined), PRIME=1.5, no DOLBY —
+  those were hardcoded approximations; this model is the authoritative one.
 """
 
 from __future__ import annotations
@@ -78,10 +84,12 @@ def solve(
     cfg: ScoringConfig | None = None,
     top_k: int = 3,
     min_diff: int = 2,
+    required: set | None = None,
 ) -> list[list[Showing]]:
     """
     Return up to top_k diverse schedules (each pair differs by ≥ min_diff showings).
     Assumes all showings are for the same theater. Groups by day internally.
+    required: set of tmdb_ids or canonical titles that must appear in every result.
     """
     if cfg is None:
         cfg = ScoringConfig()
@@ -115,6 +123,8 @@ def solve(
             return
 
         if idx == n:
+            if required and not required.issubset({_key(s) for s in cur_sched}):
+                return
             entry = (cur_score, list(cur_sched))
             pool.append(entry)
             pool.sort(key=lambda x: -x[0])

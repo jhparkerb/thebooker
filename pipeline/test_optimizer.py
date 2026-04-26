@@ -163,5 +163,26 @@ def test_tier_label_custom_thresholds():
     assert tier_label(50,  tiers) == "thin weekend"
 
 
+# --- required param ---
+
+def test_solve_required_appears_in_all_schedules():
+    schedules = solve(SHOWINGS, TAGS, ScoringConfig(), required={"Project Hail Mary"})
+    assert schedules, "expected at least one schedule"
+    for sched in schedules:
+        assert any(s.title_canonical == "Project Hail Mary" for s in sched)
+
+def test_solve_required_empty_set_unchanged():
+    without = solve(SHOWINGS, TAGS, ScoringConfig())
+    with_empty = solve(SHOWINGS, TAGS, ScoringConfig(), required=set())
+    assert len(with_empty) == len(without)
+
+def test_solve_required_impossible_returns_empty():
+    assert solve(SHOWINGS, TAGS, ScoringConfig(), required={"Nonexistent Film"}) == []
+
+def test_solve_required_none_is_default():
+    assert solve(SHOWINGS, TAGS, ScoringConfig(), required=None) == \
+           solve(SHOWINGS, TAGS, ScoringConfig())
+
+
 if __name__ == "__main__":
     main()
