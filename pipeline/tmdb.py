@@ -109,12 +109,3 @@ def lookup(title: str, year: int | None, token: str,
     cache[cache_key] = {"cached_at": now, "data": data}
     _save_cache(cache)
     return data
-
-
-def bulk_lookup(titles: list[tuple[str, int | None]], token: str,
-                ttl_days: int = 180) -> dict[tuple, dict | None]:
-    """
-    Look up a list of (title, year) pairs. Returns a dict keyed by (title, year).
-    Skips titles already in cache to avoid redundant API calls.
-    """
-    return {(t, y): lookup(t, y, token, ttl_days) for t, y in titles}
