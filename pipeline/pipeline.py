@@ -7,12 +7,14 @@ Usage:
 """
 
 from __future__ import annotations
+import argparse
 import dataclasses
 import datetime
-import sys
 from pathlib import Path
 
 import yaml
+
+import sys
 
 from pipeline.optimizer import ScoringConfig, Showing, solve, weekend_score
 from pipeline.tagger import build_tag_sets
@@ -83,12 +85,13 @@ def run(cfg: dict, days: list[datetime.date]) -> None:
 
 
 def main() -> None:
-    cfg    = _load_cfg()
-    anchor = datetime.date.today()
-    if "--date" in sys.argv:
-        idx    = sys.argv.index("--date")
-        anchor = datetime.date.fromisoformat(sys.argv[idx + 1])
-    run(cfg, _weekend_days(anchor))
+    parser = argparse.ArgumentParser(description="The Booker — weekend movie digest")
+    parser.add_argument("--date", metavar="YYYY-MM-DD",
+                        type=datetime.date.fromisoformat,
+                        default=datetime.date.today(),
+                        help="anchor date (defaults to today)")
+    args = parser.parse_args()
+    run(_load_cfg(), _weekend_days(args.date))
 
 
 if __name__ == "__main__":
