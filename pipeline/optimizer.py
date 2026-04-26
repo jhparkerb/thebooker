@@ -38,7 +38,7 @@ class ScoringConfig:
         "STANDARD": 0.0,
     })
     recliner_bonus: float   = 1.0
-    diversity_bonus: float  = 5.0   # per distinct must-see in schedule
+    diversity_bonus: float  = 5.0   # TODO: remove after a few real runs if it doesn't move decisions
 
 
 @dataclass
