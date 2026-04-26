@@ -21,8 +21,6 @@ from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
 
-import requests
-
 from pipeline.optimizer import Showing
 from pipeline.scrapers.base import Scraper
 
@@ -47,17 +45,16 @@ def _cfg() -> dict:
     return yaml.safe_load(CONFIG.read_text())
 
 
-_session = requests.Session()
-_session.headers.update({
-    "Accept": "application/json",
-    "User-Agent": "TheBooker/1.0 (personal scheduling tool; non-commercial)",
-})
-
-
 def _get(path: str, params: dict | None = None) -> dict:
+    import requests
+    session = requests.Session()
+    session.headers.update({
+        "Accept": "application/json",
+        "User-Agent": "TheBooker/1.0 (personal scheduling tool; non-commercial)",
+    })
     headers = {"X-AMC-Vendor-Key": _cfg()["amc"]["vendor_key"]}
     for attempt in range(3):
-        resp = _session.get(API_BASE + path, headers=headers,
+        resp = session.get(API_BASE + path, headers=headers,
                             params=params, timeout=15)
         if resp.status_code == 429:
             time.sleep(2 ** attempt)
