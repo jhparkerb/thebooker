@@ -5,6 +5,7 @@ Maintains cache/last_digest.json for new-since-last-run diffing.
 
 from __future__ import annotations
 import json
+from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
@@ -77,9 +78,9 @@ def render(
             print()
             continue
 
-        by_day: dict[date, list[Showing]] = {}
+        by_day: defaultdict[date, list[Showing]] = defaultdict(list)
         for s in schedule:
-            by_day.setdefault(s.day, []).append(s)
+            by_day[s.day].append(s)
 
         for day in days:
             day_showings = sorted(by_day.get(day, []), key=lambda s: s.listed_start_min)
