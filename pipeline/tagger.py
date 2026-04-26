@@ -14,8 +14,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from pipeline.optimizer import TagSets
 from pipeline.tmdb import lookup as tmdb_lookup
 from pipeline.letterboxd import fetch_watchlist, fetch_watched
@@ -27,6 +25,7 @@ TMDB_HORROR_GENRE = 27
 def _load_overrides() -> dict:
     if not OVERRIDES_PATH.exists():
         return {}
+    import yaml
     return yaml.safe_load(OVERRIDES_PATH.read_text()) or {}
 
 

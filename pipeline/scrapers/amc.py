@@ -22,7 +22,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import requests
-import yaml
 
 from pipeline.optimizer import Showing
 from pipeline.scrapers.base import Scraper
@@ -44,6 +43,7 @@ RECLINER_CODES = {"RESERVE", "RECLINE", "DINE-IN", "PRIME", "DOLBY"}
 
 @lru_cache(maxsize=None)
 def _cfg() -> dict:
+    import yaml
     return yaml.safe_load(CONFIG.read_text())
 
 

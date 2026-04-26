@@ -12,8 +12,6 @@ import dataclasses
 import datetime
 from pathlib import Path
 
-import yaml
-
 import sys
 
 from pipeline.optimizer import ScoringConfig, Showing, solve, weekend_score
@@ -25,6 +23,7 @@ CONFIG = Path(__file__).parent.parent / "config.yaml"
 
 
 def _load_cfg() -> dict:
+    import yaml
     return yaml.safe_load(CONFIG.read_text())
 
 

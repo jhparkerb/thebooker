@@ -146,8 +146,6 @@ def solve(
             break
         if all(hamming(sched, prev) >= min_diff for prev in result):
             result.append(sched)
-    if not result and pool:
-        result = [sched for _, sched in pool[:top_k]]
     return result
 
 

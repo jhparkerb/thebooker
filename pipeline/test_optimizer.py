@@ -110,5 +110,58 @@ def main():
     ws = weekend_score([best], TAGS, cfg)
     print(f"Weekend score: {ws:.0f}  ({tier_label(ws)})")
 
+# --- pytest functions ---
+
+def test_solve_returns_schedules():
+    assert len(solve(SHOWINGS, TAGS, ScoringConfig(), top_k=3)) >= 1
+
+def test_solve_best_has_must_sees():
+    best = solve(SHOWINGS, TAGS, ScoringConfig())[0]
+    titles = {s.title_canonical for s in best}
+    assert titles & {"Speed Racer", "Project Hail Mary", "Hoppers", "The Silence of the Lambs"}, \
+        f"best schedule has no must-sees: {titles}"
+
+def test_solve_skips_are_excluded():
+    tags = TagSets(must_see=set(), horror=set(), skip={"Exit 8"})
+    for sched in solve(SHOWINGS, tags, ScoringConfig()):
+        assert not any(s.title_canonical == "Exit 8" for s in sched)
+
+def test_solve_default_cfg():
+    schedules = solve(SHOWINGS, TAGS)
+    assert schedules
+
+def test_solve_top_k_diversity():
+    schedules = solve(SHOWINGS, TAGS, ScoringConfig(), top_k=3)
+    def key(s): return (s.title_canonical, s.day, s.listed_start_min)
+    def hamming(a, b): return len({key(x) for x in a}.symmetric_difference({key(x) for x in b}))
+    for i, a in enumerate(schedules):
+        for b in schedules[i+1:]:
+            assert hamming(a, b) >= 2
+
+def test_weekend_score_empty():
+    assert weekend_score([], TAGS) == 0.0
+
+def test_weekend_score_default_cfg():
+    schedules = solve(SHOWINGS, TAGS, ScoringConfig())
+    assert weekend_score(schedules, TAGS) > 0
+
+def test_weekend_score_marathon():
+    schedules = solve(SHOWINGS, TAGS, ScoringConfig())
+    assert weekend_score(schedules, TAGS) >= 1200
+
+def test_tier_label_all_tiers():
+    assert tier_label(1200) == "marathon-grade weekend"
+    assert tier_label(900)  == "solid day-of-movies"
+    assert tier_label(600)  == "decent — a couple of films"
+    assert tier_label(599)  == "thin weekend"
+
+def test_tier_label_custom_thresholds():
+    tiers = {"marathon": 500, "solid": 300, "decent": 100}
+    assert tier_label(600, tiers) == "marathon-grade weekend"
+    assert tier_label(400, tiers) == "solid day-of-movies"
+    assert tier_label(200, tiers) == "decent — a couple of films"
+    assert tier_label(50,  tiers) == "thin weekend"
+
+
 if __name__ == "__main__":
     main()
