@@ -73,42 +73,6 @@ TAGS = TagSets(
     skip=set(),
 )
 
-def fmt(m: int) -> str:
-    h, mn = divmod(m, 60)
-    ap = "pm" if h >= 12 else "am"
-    if h > 12: h -= 12
-    if h == 0: h = 12
-    return f"{h}:{mn:02d}{ap}"
-
-def main():
-    cfg = ScoringConfig()
-    schedules = solve(SHOWINGS, TAGS, cfg, top_k=3)
-
-    print(f"Top {len(schedules)} schedules:\n")
-    for i, sched in enumerate(schedules, 1):
-        sc = sum(cfg.base_per_film for _ in sched)  # rough
-        ms = sum(1 for s in sched if TAGS.is_must_see(s))
-        hr = sum(1 for s in sched if TAGS.is_horror(s))
-        ws = weekend_score([sched], TAGS, cfg)
-        print(f"=== Schedule {i}  (must-see {ms}/4 · horror {hr} · films {len(sched)} · score {ws:.0f}) [{tier_label(ws)}]")
-        for s in sorted(sched, key=lambda x: (x.day, x.listed_start_min)):
-            tags = []
-            if TAGS.is_must_see(s): tags.append("must-see")
-            if TAGS.is_horror(s): tags.append("horror")
-            tag_str = f"  [{', '.join(tags)}]" if tags else ""
-            depart = s.listed_start_min + s.runtime_min - 10
-            print(f"  {s.day}  {fmt(s.listed_start_min)}–{fmt(depart)} (dep)  {s.title_canonical:<35} ({s.format}){tag_str}")
-        print()
-
-    # Basic assertions
-    assert len(schedules) >= 1, "No schedules returned"
-    best = schedules[0]
-    titles = {s.title_canonical for s in best}
-    assert "Speed Racer" in titles or "Project Hail Mary" in titles, \
-        "Best schedule missing obvious must-sees"
-    print("Assertions passed.")
-    ws = weekend_score([best], TAGS, cfg)
-    print(f"Weekend score: {ws:.0f}  ({tier_label(ws)})")
 
 # --- pytest functions ---
 
@@ -184,5 +148,3 @@ def test_solve_required_none_is_default():
            solve(SHOWINGS, TAGS, ScoringConfig())
 
 
-if __name__ == "__main__":
-    main()
