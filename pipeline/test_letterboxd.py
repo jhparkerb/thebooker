@@ -152,36 +152,88 @@ def test_scrape_list_stops_when_no_next_page(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# _read_watched_csv
+# _fetch_watched_rss
 # ---------------------------------------------------------------------------
 
-def test_read_watched_csv_basic(tmp_path):
-    f = tmp_path / "watched.csv"
-    f.write_text(
-        "Date,Name,Year,Letterboxd URI,Rating\n"
-        "2026-01-01,Foo,2025,https://letterboxd.com/film/foo/,4\n"
-        "2026-02-01,Bar,2024,https://letterboxd.com/film/bar/,3\n"
+def _rss(items_xml=""):
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<rss xmlns:letterboxd="https://letterboxd.com" xmlns:tmdb="https://themoviedb.org">'
+        f'<channel>{items_xml}</channel></rss>'
     )
-    films = lb._read_watched_csv(f)
-    assert len(films) == 2
-    assert films[0] == {"slug": "foo", "title": "Foo", "year": 2025}
-    assert films[1]["slug"] == "bar"
 
-def test_read_watched_csv_non_numeric_year(tmp_path):
-    f = tmp_path / "watched.csv"
-    f.write_text(
-        "Date,Name,Year,Letterboxd URI,Rating\n"
-        "2026-01-01,Foo,,https://letterboxd.com/film/foo/,\n"
+def _rss_item(title="Foo", year="2026", tmdb_id="123", slug="foo"):
+    return (
+        f"<item>"
+        f"<title>{title}, {year}</title>"
+        f"<link>https://letterboxd.com/jhparkerb/film/{slug}/</link>"
+        f"<letterboxd:filmTitle>{title}</letterboxd:filmTitle>"
+        f"<letterboxd:filmYear>{year}</letterboxd:filmYear>"
+        f"<tmdb:movieId>{tmdb_id}</tmdb:movieId>"
+        f"</item>"
     )
-    assert lb._read_watched_csv(f)[0]["year"] is None
 
-def test_read_watched_csv_empty_title_skipped(tmp_path):
-    f = tmp_path / "watched.csv"
-    f.write_text(
-        "Date,Name,Year,Letterboxd URI,Rating\n"
-        "2026-01-01,,2025,https://letterboxd.com/film/x/,\n"
+
+def test_fetch_watched_rss_extracts_fields(monkeypatch):
+    monkeypatch.setattr(lb, "_fetch_page", lambda url: _rss(_rss_item()))
+    films = lb._fetch_watched_rss("user1")
+    assert films == [{"slug": "foo", "title": "Foo", "year": 2026, "tmdb_id": 123}]
+
+
+def test_fetch_watched_rss_handles_review_subpath(monkeypatch):
+    # Rewatch links look like .../film/magnolia/1/ — slug is still 'magnolia'.
+    monkeypatch.setattr(lb, "_fetch_page",
+                        lambda url: _rss(
+                            "<item>"
+                            "<link>https://letterboxd.com/u/film/magnolia/1/</link>"
+                            "<letterboxd:filmTitle xmlns:letterboxd='https://letterboxd.com'>Magnolia</letterboxd:filmTitle>"
+                            "<letterboxd:filmYear xmlns:letterboxd='https://letterboxd.com'>1999</letterboxd:filmYear>"
+                            "<tmdb:movieId xmlns:tmdb='https://themoviedb.org'>334</tmdb:movieId>"
+                            "</item>"))
+    films = lb._fetch_watched_rss("user1")
+    assert films[0]["slug"] == "magnolia"
+    assert films[0]["tmdb_id"] == 334
+
+
+def test_fetch_watched_rss_missing_tmdb_id_is_none(monkeypatch):
+    item = (
+        "<item>"
+        "<link>https://letterboxd.com/u/film/foo/</link>"
+        "<letterboxd:filmTitle xmlns:letterboxd='https://letterboxd.com'>Foo</letterboxd:filmTitle>"
+        "<letterboxd:filmYear xmlns:letterboxd='https://letterboxd.com'>2026</letterboxd:filmYear>"
+        "</item>"
     )
-    assert lb._read_watched_csv(f) == []
+    monkeypatch.setattr(lb, "_fetch_page", lambda url: _rss(item))
+    assert lb._fetch_watched_rss("u")[0]["tmdb_id"] is None
+
+
+def test_fetch_watched_rss_skips_titleless_items(monkeypatch):
+    monkeypatch.setattr(lb, "_fetch_page", lambda url: _rss("<item><link>x</link></item>"))
+    assert lb._fetch_watched_rss("u") == []
+
+
+# ---------------------------------------------------------------------------
+# _merge_watched
+# ---------------------------------------------------------------------------
+
+def test_merge_watched_dedupes_by_tmdb_id():
+    existing = [{"slug": "old", "title": "X", "year": 2024, "tmdb_id": 7}]
+    fresh    = [{"slug": "new", "title": "X (rewatch)", "year": 2024, "tmdb_id": 7}]
+    merged = lb._merge_watched(existing, fresh)
+    assert len(merged) == 1
+    assert merged[0]["slug"] == "new"   # fresh wins
+
+def test_merge_watched_falls_back_to_slug_when_no_tmdb_id():
+    existing = [{"slug": "foo", "title": "Foo", "year": 2026, "tmdb_id": None}]
+    fresh    = [{"slug": "foo", "title": "Foo updated", "year": 2026, "tmdb_id": None}]
+    assert len(lb._merge_watched(existing, fresh)) == 1
+
+def test_merge_watched_keeps_old_entries():
+    existing = [{"slug": "old", "title": "Old", "year": 2020, "tmdb_id": 1}]
+    fresh    = [{"slug": "new", "title": "New", "year": 2026, "tmdb_id": 2}]
+    merged = lb._merge_watched(existing, fresh)
+    ids = {f["tmdb_id"] for f in merged}
+    assert ids == {1, 2}
 
 
 # ---------------------------------------------------------------------------
@@ -245,25 +297,41 @@ def test_fetch_watchlist_stale_cache_refetches(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# fetch_watched — csv_path bypasses network entirely
+# fetch_watched — RSS + cache merge
 # ---------------------------------------------------------------------------
 
-def test_fetch_watched_with_csv_path(tmp_path):
-    csv_file = tmp_path / "watched.csv"
-    csv_file.write_text(
-        "Date,Name,Year,Letterboxd URI,Rating\n"
-        "2026-01-01,Foo,2025,https://letterboxd.com/film/foo/,\n"
-    )
-    films = lb.fetch_watched("user1", csv_path=csv_file)
-    assert len(films) == 1
-    assert films[0]["title"] == "Foo"
-
-
-def test_fetch_watched_no_csv_uses_cache(tmp_path, monkeypatch):
+def test_fetch_watched_fresh_cache_skips_network(tmp_path, monkeypatch):
     cache_file = _patch_lb_cache(monkeypatch, tmp_path)
     cache_file.write_text(json.dumps({
-        "user1:watched": {"cached_at": time.time(), "films": [{"slug": "w", "title": "W", "year": 2024}]}
+        "user1:watched": {"cached_at": time.time(),
+                          "films": [{"slug": "w", "title": "W", "year": 2024, "tmdb_id": 9}]}
     }))
-    monkeypatch.setattr(lb, "_fetch_page", lambda url: (_ for _ in ()).throw(AssertionError("unexpected network call")))
+    def boom(url): raise AssertionError("unexpected network call")
+    monkeypatch.setattr(lb, "_fetch_page", boom)
+    assert lb.fetch_watched("user1")[0]["tmdb_id"] == 9
+
+
+def test_fetch_watched_stale_cache_merges_rss(tmp_path, monkeypatch):
+    cache_file = _patch_lb_cache(monkeypatch, tmp_path)
+    cache_file.write_text(json.dumps({
+        "user1:watched": {"cached_at": 0.0,
+                          "films": [{"slug": "old", "title": "Old", "year": 2020, "tmdb_id": 1}]}
+    }))
+    monkeypatch.setattr(lb, "_fetch_page",
+                        lambda url: _rss(_rss_item(title="New", year="2026", tmdb_id="2", slug="new")))
     films = lb.fetch_watched("user1")
-    assert films[0]["title"] == "W"
+    ids = {f["tmdb_id"] for f in films}
+    assert ids == {1, 2}   # old kept, new added
+
+
+def test_fetch_watched_force_bypasses_fresh_cache(tmp_path, monkeypatch):
+    cache_file = _patch_lb_cache(monkeypatch, tmp_path)
+    cache_file.write_text(json.dumps({
+        "user1:watched": {"cached_at": time.time(),
+                          "films": [{"slug": "old", "title": "Old", "year": 2020, "tmdb_id": 1}]}
+    }))
+    fetched = []
+    monkeypatch.setattr(lb, "_fetch_page",
+                        lambda url: fetched.append(url) or _rss(_rss_item(tmdb_id="2", slug="new", title="New")))
+    lb.fetch_watched("user1", force=True)
+    assert fetched   # network was hit despite fresh cache

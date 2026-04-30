@@ -57,9 +57,9 @@ TMDB API client with local JSON cache.
 Letterboxd data access — watchlist and watched list.
 
 - **`fetch_watchlist(username)`** — scrapes HTML poster grid; paginates; stops early once no recent films remain (configurable `min_year`)
-- **`fetch_watched(username, csv_path=None)`** — prefers a CSV export (`watched.csv` from LB Settings → Data → Export); falls back to HTML scraping
-- Cache stored at `pipeline/cache/letterboxd.json`; watchlist TTL 7 days, watched TTL 30 days
-- Uses `urllib` (stdlib); 2s delay between pages
+- **`fetch_watched(username)`** — pulls the user's RSS feed (`/{user}/rss/`, ~50 most recent entries) and merges into the on-disk cache. RSS items include the TMDB id directly, so downstream tagging can skip the TMDB lookup. Cache accretes monotonically across runs. (The `/{user}/films/` HTML pages are now behind a Cloudflare bot challenge, hence RSS.)
+- Cache stored at `pipeline/cache/letterboxd.json`; watchlist TTL 7 days, watched TTL 1 day
+- Uses `urllib` (stdlib) and `xml.etree.ElementTree` for RSS; 2s delay between watchlist pages
 
 ### `digest.py`
 Renders the final schedule to stdout.

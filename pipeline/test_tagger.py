@@ -121,6 +121,12 @@ def test_resolve_lb_to_tmdb_none_skipped(monkeypatch):
     result = tagger._resolve_lb_to_tmdb([{"title": "Foo", "year": 2026}], "tok", 30)
     assert result == {}
 
+def test_resolve_lb_to_tmdb_skips_lookup_when_id_present(monkeypatch):
+    def boom(*a, **kw): raise AssertionError("tmdb_lookup should not be called")
+    monkeypatch.setattr(tagger, "tmdb_lookup", boom)
+    f = {"title": "Foo", "year": 2026, "tmdb_id": 99, "slug": "foo"}
+    assert tagger._resolve_lb_to_tmdb([f], "tok", 30) == {99: f}
+
 
 # ---------------------------------------------------------------------------
 # build_tag_sets

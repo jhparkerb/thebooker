@@ -1,9 +1,12 @@
 """
 Letterboxd data access — watchlist and watched-list for a given username.
 
-Two sources supported:
-  1. HTML scraping of letterboxd.com (watchlist only; gentle, cached weekly)
-  2. CSV export from LB Settings → Data → Export (preferred for watched list)
+Watchlist: HTML scraping of /{user}/watchlist/ (cached weekly).
+Watched:   RSS feed at /{user}/rss/ — only the most recent ~50 entries,
+           but bundles the TMDB id so we skip the TMDB lookup. Merged into
+           the on-disk cache each run, so history accretes across runs.
+           (The /{user}/films/ HTML pages are now behind a Cloudflare bot
+           challenge and reliably 403, hence RSS.)
 
 Letterboxd grid HTML structure (as of 2026):
   <li class="griditem">
@@ -13,11 +16,11 @@ Letterboxd grid HTML structure (as of 2026):
 """
 
 from __future__ import annotations
-import csv
 import json
 import re
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -27,8 +30,8 @@ HEADERS    = {
     "User-Agent": "TheBooker/1.0 (personal movie scheduling tool; non-commercial)",
     "Accept-Language": "en-US,en;q=0.9",
 }
-WATCHLIST_TTL_SECS = 7  * 86400   # re-fetch watchlist weekly
-WATCHED_TTL_SECS   = 30 * 86400   # re-fetch watched monthly (barely changes)
+WATCHLIST_TTL_SECS = 7 * 86400   # re-fetch watchlist weekly
+WATCHED_TTL_SECS   = 86400       # RSS is cheap; refresh daily
 
 
 # ---------------------------------------------------------------------------
@@ -137,37 +140,62 @@ def fetch_watchlist(username: str, force: bool = False,
                          stop_before_year=min_year if upcoming_only else None)
 
 
-def fetch_watched(username: str, csv_path: Path | None = None,
-                  force: bool = False) -> list[dict]:
-    """Return {slug, title, year} dicts for the user's watched films.
+def fetch_watched(username: str, force: bool = False) -> list[dict]:
+    """Return {slug, title, year, tmdb_id} dicts for watched films.
 
-    Prefer csv_path (LB Settings → Data → Export → watched.csv) — it's
-    complete, instant, and puts zero load on letterboxd.com.
-    Falls back to HTML scraping if no CSV is provided, but that's slow for
-    large libraries (~3-5 min) and should only run once (cached 30 days).
+    Pulls the most recent ~50 entries from Letterboxd's RSS feed and merges
+    them into the on-disk cache, so history accretes monotonically across
+    runs even though each fetch only sees a small window.
     """
-    if csv_path is not None:
-        return _read_watched_csv(csv_path)
-    return _fetch_cached(username, "watched",
-                         f"{BASE_URL}/{username}/films/page/{{page}}/",
-                         force, WATCHED_TTL_SECS)
+    cache = _load_cache()
+    key = f"{username}:watched"
+    now = time.time()
+    cached = cache.get(key)
+    if not force and cached and now - cached["cached_at"] < WATCHED_TTL_SECS:
+        return cached["films"]
+
+    print(f"[letterboxd] fetching watched for {username}...")
+    fresh = _fetch_watched_rss(username)
+    existing = cached["films"] if cached else []
+    merged = _merge_watched(existing, fresh)
+    cache[key] = {"cached_at": now, "films": merged}
+    _save_cache(cache)
+    print(f"[letterboxd] {len(merged)} films in watched ({len(merged) - len(existing)} new)")
+    return merged
 
 
-def _read_watched_csv(csv_path: Path) -> list[dict]:
-    """Parse LB's watched.csv export. Columns: Date,Name,Year,Letterboxd URI,Rating"""
-    films = []
-    with open(csv_path, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            title = row.get("Name", "").strip()
-            year_str = row.get("Year", "").strip()
-            slug = row.get("Letterboxd URI", "").rstrip("/").split("/")[-1]
-            if title:
-                films.append({
-                    "slug":  slug,
-                    "title": title,
-                    "year":  int(year_str) if year_str.isdigit() else None,
-                })
+def _fetch_watched_rss(username: str) -> list[dict]:
+    xml_text = _fetch_page(f"{BASE_URL}/{username}/rss/")
+    root = ET.fromstring(xml_text)
+    ns = {"lb": "https://letterboxd.com", "tmdb": "https://themoviedb.org"}
+    films: list[dict] = []
+    for item in root.iterfind(".//item"):
+        title = (item.findtext("lb:filmTitle", namespaces=ns) or "").strip()
+        if not title:
+            continue
+        year_text = item.findtext("lb:filmYear", namespaces=ns) or ""
+        tmdb_text = item.findtext("tmdb:movieId", namespaces=ns) or ""
+        link_text = item.findtext("link") or ""
+        slug = ""
+        if "/film/" in link_text:
+            slug = link_text.split("/film/", 1)[1].rstrip("/").split("/")[0]
+        films.append({
+            "slug":    slug,
+            "title":   title,
+            "year":    int(year_text) if year_text.isdigit() else None,
+            "tmdb_id": int(tmdb_text) if tmdb_text.isdigit() else None,
+        })
     return films
+
+
+def _merge_watched(existing: list[dict], fresh: list[dict]) -> list[dict]:
+    """Merge RSS items into existing list, deduplicating by tmdb_id (or slug)."""
+    def key(f: dict) -> tuple:
+        return ("t", f["tmdb_id"]) if f.get("tmdb_id") else ("s", f.get("slug", ""))
+    merged = {key(f): f for f in existing}
+    for f in fresh:
+        merged[key(f)] = f   # fresh wins on conflict
+    return list(merged.values())
 
 
 def _fetch_cached(username: str, list_name: str,

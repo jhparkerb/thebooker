@@ -31,9 +31,14 @@ def _load_overrides() -> dict:
 
 
 def _resolve_lb_to_tmdb(films: list[dict], token: str, ttl_days: int) -> dict[int, dict]:
-    """Map TMDB id → result dict for every LB film we can resolve."""
+    """Map TMDB id → result dict for every LB film we can resolve.
+    Skips the TMDB lookup when the LB entry already carries a tmdb_id
+    (the watched RSS feed bundles it)."""
     resolved: dict[int, dict] = {}
     for f in films:
+        if f.get("tmdb_id"):
+            resolved[f["tmdb_id"]] = f
+            continue
         r = tmdb_lookup(f["title"], f["year"], token, ttl_days)
         if r:
             resolved[r["tmdb_id"]] = r
